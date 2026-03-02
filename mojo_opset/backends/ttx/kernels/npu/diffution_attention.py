@@ -2,10 +2,25 @@ from functools import cache
 from typing import Any
 from typing import Dict
 from typing import Tuple
+import inspect
 
 import torch
 import triton
 import triton.language as tl
+
+
+def make_triton_config(meta: dict, **kwargs):
+    """
+    Wrapper around triton.Config to be compatible with different Triton versions.
+    Filters out keyword arguments that are not supported by the installed Triton.
+    """
+    try:
+        sig = inspect.signature(triton.Config)
+        supported = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    except (TypeError, ValueError):
+        # Fallback: if we can't introspect, just drop extra kwargs
+        supported = {}
+    return triton.Config(meta, **supported)
 
 
 @cache
@@ -202,7 +217,7 @@ def micro_kernel_bwd_kv(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 64, "BLOCK_C": 256},
             multibuffer=True,
             unit_flag=True,
@@ -427,7 +442,7 @@ def kernel_sda_fwd_up(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 64, "BLOCK_C": 256},
             multibuffer=True,
             unit_flag=True,
@@ -675,7 +690,7 @@ def kernel_sda_bwd_d(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 64, "BLOCK_C": 128},
             multibuffer=True,
             unit_flag=True,
@@ -902,7 +917,7 @@ def kernel_sda_bwd_q_up(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 64, "BLOCK_C": 128},
             multibuffer=True,
             unit_flag=True,
@@ -1094,7 +1109,7 @@ def kernel_sda_bwd_q_down(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 256, "BLOCK_C": 64},
             multibuffer=True,
             unit_flag=True,
@@ -1232,7 +1247,7 @@ def kernel_sda_bwd_kv_left(
 
 @triton.autotune(
     configs=[
-        triton.Config(
+        make_triton_config(
             {"BLOCK_R": 128, "BLOCK_C": 64},
             multibuffer=True,
             unit_flag=True,
