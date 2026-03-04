@@ -1,7 +1,8 @@
 from functools import cache
 from typing import Any
 from typing import Dict
-from typing import Tuple, inspect
+from typing import Tuple
+import inspect
 
 import torch
 import triton

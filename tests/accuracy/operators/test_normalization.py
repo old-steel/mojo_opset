@@ -7,6 +7,7 @@ from mojo_opset import MojoLayerNorm
 from mojo_opset import MojoResidualAddLayerNorm
 from mojo_opset import MojoResidualAddRMSNorm
 from mojo_opset import MojoRMSNorm
+from mojo_opset import MojoResidualAddNormCast
 
 torch.manual_seed(43)
 
