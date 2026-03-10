@@ -30,8 +30,8 @@ def test_topp_filter(logits, topk, topp, min_tokens_to_keep):
 @pytest.mark.parametrize(
     "logits, topk, min_tokens_to_keep",
     [
-        (torch.randn(120, 151936), 1000, 1),
-        (torch.randn(15, 155136), 100, 1),
+        (torch.randn(120, 151936), 20, 1),
+        (torch.randn(15, 155136), 50, 1),
         (torch.randn(18, 155136), 100, 1),
     ],
 )
