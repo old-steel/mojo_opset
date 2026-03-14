@@ -52,6 +52,7 @@ When multiple backends are added, Mojo Opset selects the backend implementation 
 | Activation  | MojoSilu                    | ✅                | ✅             |
 | Activation  | MojoSwiGlu                  | ✅                | ✅             |
 | Activation  | MojoSwiGluQuant             | TBD               | TBD           |
+| Linear      | MojoLinear                  | ✅                | TBD           |
 | Gemm        | MojoGroupGemm               | ✅                | ✅             |
 | Gemm        | MojoGemmAllReduce           | TBD               | TBD           |
 | Gemm        | MojoAllGatherGemm           | TBD               | TBD           |
@@ -84,13 +85,17 @@ When multiple backends are added, Mojo Opset selects the backend implementation 
 | Norm        | MojoNormQuant               | TBD               | TBD           |
 | Norm        | MojoResidualAddNormQuant    | TBD               | TBD           |
 | Norm        | MojoResidualAddNormCast     | TBD               | TBD           |
+| Norm        | MojoChannelRMSNorm          | ✅                | TBD           |
 | PositionEmb | MojoRoPE                    | ✅                | ✅             |
+| PositionEmb | MojoGridRoPE                | ✅                | TBD            |
 | KVCache     | MojoStorePagedKVCache       | ✅                | ✅             |
 | KVCache     | MojoStorePagedMLAKVCache    | TBD               | TBD           |
 | Quantize    | MojoQuant                   | TBD               | TBD           |
 | Quantize    | MojoDequant                 | TBD               | TBD           |
 | Embedding   | MojoEmbedding               | TBD               | TBD           |
 | Embedding   | MojoParallelEmbedding       | TBD               | TBD           |
+| Embedding   | MojoRelativeEmbedding       | ✅                | TBD           |
+
 
 ### Mojo Function List
 
