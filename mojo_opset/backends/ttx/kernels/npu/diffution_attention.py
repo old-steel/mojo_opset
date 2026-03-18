@@ -625,7 +625,7 @@ def kernel_sda_fwd_down(
 
 @triton.autotune(
     configs=[
-        make_triton_config({"BLOCK_R": 64}),
+        triton.Config({"BLOCK_R": 64}),
     ],
     key=["N", "S", "H"],
 )

@@ -355,7 +355,56 @@ class MojoSdpa(MojoOperator):
 
         return output
 
+class MojoFusionAttention(MojoOperator):
+    def __init__(
+        self,
+        head_num: int,
+        mask: Optional[torch.Tensor] = None,
+        scale: float = 1.0,
+        enable_gqa: bool = False,
+    ):
+        super().__init__()
+        self.head_num = head_num
+        self.mask = mask
+        self.scale = scale
+        self.enable_gqa = enable_gqa
+        
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+    ):
+        """
+        Fusion Attention operator.
+        """
+        pass
 
+class MojoFusedInferAttentionScore(MojoOperator):
+    def __init__(
+        self,
+        head_num: int,
+        mask: Optional[torch.Tensor] = None,
+        scale: float = 1.0,
+        enable_gqa: bool = False,
+    ):
+        super().__init__()
+        self.head_num = head_num
+        self.mask = mask
+        self.scale = scale
+        self.enable_gqa = enable_gqa
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+    ):
+        """
+        Fused Infer Attention Score operator.
+        """
+        pass
+    
 class MojoAttentionDecodeMTP(MojoOperator):
     def __init__(
         self, 
