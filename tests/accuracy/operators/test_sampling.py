@@ -18,7 +18,11 @@ from mojo_opset import MojoTopKSampling
 
 @pytest.mark.parametrize(
     "logits, topk, min_tokens_to_keep",
-    [(torch.randn(20, 151936), 100, 1)],
+    [
+        (torch.randn(20, 151936), 10, 1),
+        (torch.randn(96, 151936), 50, 1),
+        (torch.randn(48, 151936), 100, 1),
+    ],
 )
 @auto_switch_platform()
 @bypass_not_implemented
