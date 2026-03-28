@@ -31,6 +31,9 @@ from .operators.attention import MojoSdpa
 from .operators.attention import MojoPagedPrefillSWA
 from .operators.attention import MojoPagedDecodeSWA
 from .operators.attention import MojoSWA
+from .operators.attention import MojoFusionAttention
+from .operators.attention import MojoFusedInferAttentionScore
+from .operators.attention import MojoAttentionDecodeMTP
 
 """ kvcache """
 from .operators.kv_cache import MojoStoreMLAKVCache
@@ -43,6 +46,8 @@ from .operators.gemm import MojoGroupGemm
 from .operators.gemm import MojoQuantGroupLinearReduceSum
 from .operators.gemm import MojoGroupGemm as MojoGroupLinear
 from .operators.linear import MojoLinear
+from .operators.gemm import MojoQuantGroupGemmCombineEP
+from .operators.gemm import MojoQuantMatmul
 
 """ compute + comm """
 from .operators.compute_with_comm import MojoAllGatherGemm
@@ -71,6 +76,8 @@ from .operators.moe import MojoMoE
 from .operators.moe import MojoMoECombine
 from .operators.moe import MojoMoEDispatch
 from .operators.moe import MojoMoEGating
+from .operators.moe import MojoMoeTopkGatingDispatchDynamicQuant
+
 
 """ normalization """
 from .operators.normalization import MojoChannelRMSNorm
@@ -142,6 +149,9 @@ __all__ = [
     "MojoPagedPrefillSWA",
     "MojoPagedDecodeSWA",
     "MojoSWA",
+    "MojoFusionAttention",
+    "MojoFusedInferAttentionScore",
+    "MojoAttentionDecodeMTP",
 
     "MojoStorePagedKVCache",
     "MojoStoreMLAKVCache",
@@ -155,6 +165,8 @@ __all__ = [
     "MojoGemmAll2All",
     "MojoGemmAllReduce",
     "MojoGemmReduceScatter",
+    "MojoQuantGroupGemmCombineEP",
+    "MojoQuantMatmul",
 
     "MojoQuant",
     "MojoDequant",
@@ -191,6 +203,7 @@ __all__ = [
     "MojoJoinProbRejectSampling",
     "MojoApplyPenaltiesTempurate",
     "MojoTopPFilter",
+    "MojoMoeTopkGatingDispatchDynamicQuant",
 
     "MojoCausalConv1dUpdateState",
 
