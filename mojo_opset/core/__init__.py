@@ -74,6 +74,7 @@ from .operators.moe import MojoMoE
 from .operators.moe import MojoMoECombine
 from .operators.moe import MojoMoEDispatch
 from .operators.moe import MojoMoEGating
+from .operators.moe import MojoMoeTopkGatingDispatchDynamicQuant
 
 
 """ normalization """
@@ -175,6 +176,7 @@ __all__ = [
     "MojoMoEGating",
     "MojoMoEDispatch",
     "MojoMoECombine",
+    "MojoMoeTopkGatingDispatchDynamicQuant",
 
     "MojoLayerNorm",
     "MojoRMSNorm",
