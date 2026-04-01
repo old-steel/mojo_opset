@@ -133,7 +133,7 @@ You can build the model using Mojo Opset in the following ways:
 
 1. Build model from mojo opset
 
-    You can also build your modeling by mojo opset directly, [Mojo qwen3 dense modeling](./mojo_opset/modeling/mojo_qwen3_dense.py) is an example.
+    You can also build your modeling by mojo opset directly, [Mojo qwen3 dense modeling](./mojo_opset/modeling/qwen3/mojo_qwen3_dense.py) is an example.
 
     And you can try the LLM inference demo by running the following command:
 
