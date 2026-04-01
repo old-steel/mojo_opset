@@ -1,4 +1,4 @@
-name: Run test case on ilu
+name: Run test case on mlu
 on:
   pull_request:
     branches:
@@ -8,8 +8,10 @@ on:
     - 'CHANGELOG.md'
     - 'README.md'
     - 'mojo_opset/backends/ttx/kernels/npu/**'
+    - 'mojo_opset/backends/ttx/kernels/ilu/**'
     - 'mojo_opset/backends/torch_npu/**'
     - '.github/workflows/ascend_accuracy_ci.yml'
+    - '.github/workflows/iluvatar_accuracy_ci.yml'
   push:
     branches:
     - master
@@ -17,25 +19,27 @@ on:
     - 'CHANGELOG.md'
     - 'README.md'
     - 'mojo_opset/backends/ttx/kernels/npu/**'
+    - 'mojo_opset/backends/ttx/kernels/ilu/**'
     - 'mojo_opset/backends/torch_npu/**'
     - '.github/workflows/ascend_accuracy_ci.yml'
+    - '.github/workflows/iluvatar_accuracy_ci.yml'
   workflow_dispatch:
 env:
   MOJO_OPSET_PROXY: ${{ secrets.MOJO_OPSET_PROXY }}
-  CONTAINER_NAME: ci-ilu-${{ github.run_id }}
+  CONTAINER_NAME: ci-mlu-${{ github.run_id }}
 defaults:
   run:
     shell: bash
 jobs:
   run-tests:
-    name: Run ilu tests
-    runs-on: ILU
+    name: Run mlu tests
+    runs-on: MLU
     steps:
       - name: Pre-cleanup workspace
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
-            corex:4.4.0 \
+            hub.byted.org/base/data.aml.mlu-th27-py310-base:55f18d2289b543237202ccfb95144d09 \
             bash -c "find /workspace -mindepth 1 -delete" || true
 
       - uses: actions/checkout@v4
@@ -44,14 +48,14 @@ jobs:
         run: |
           docker run -d --rm \
             --name ${{ env.CONTAINER_NAME }} \
-            --privileged --cap-add=ALL --pid=host --ipc=host --network=host \
+            --privileged --pid=host --ipc=host --network=host \
             -v ${{ github.workspace }}:/workspace \
-            -v /data:/data \
-            -v /data1:/data1 \
-            -v /lib/modules:/lib/modules \
-            -v /usr/src:/usr/src \
-            -v /dev:/dev \
-            corex:4.4.0 \
+            -v /usr/bin/cnmon:/usr/bin/cnmon \
+            -v /data01:/data01 \
+            -v /data02:/data02 \
+            -v /opt/tmp/sock:/opt/tmp/sock \
+            -v /opt/tmp/consul_agent:/opt/tmp/consul_agent \
+            hub.byted.org/base/data.aml.mlu-th27-py310-base:55f18d2289b543237202ccfb95144d09 \
             tail -f /dev/null
 
       - name: Build And Install Wheel Artifact
@@ -61,7 +65,7 @@ jobs:
             git config --global --add safe.directory /workspace
             export HTTP_PROXY=${MOJO_OPSET_PROXY} HTTPS_PROXY=${MOJO_OPSET_PROXY}
             pip install -U pip setuptools wheel build pytest-xdist
-            pip install -e .[ilu] --index-url https://bytedpypi.byted.org/simple
+            pip install -e .[mlu] --index-url https://bytedpypi.byted.org/simple
             python3 -m build .
             pip install dist/*.whl --force-reinstall --no-deps
           "
@@ -70,9 +74,10 @@ jobs:
         run: |
           docker exec ${{ env.CONTAINER_NAME }} bash -c "
             cd /workspace
-            echo 'Running ttx kernels tests on Iluvatar GPU...'
-            MOJO_BACKEND=ttx python3 -m pytest tests/accuracy/operators/ \
+            echo 'Running ttx kernels tests on MLU...'
+            MOJO_BACKEND=ttx python3 -m pytest -n 8 tests/accuracy/operators/ \
               --ignore=tests/accuracy/operators/test_compute_with_comm.py
+            MOJO_BACKEND=ttx python3 -m pytest -n 8 tests/accuracy/functions/
           "
 
       - name: Cleanup
