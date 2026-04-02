@@ -9,7 +9,7 @@ from .operator import MojoOperator
 
 logger = get_logger(__name__)
 
-BACKEND_PRIORITY_LIST = ["ttx", "torch_npu", "xops", "torch"]
+BACKEND_PRIORITY_LIST = ["ttx", "torch_npu", "torch"]
 BACKEND_PRIORITY_MAP = {
     "torchnpu": "torch_npu"
 }  ## Avoid the issue of failed identification of underscore "_" in the torch_npu backend name
