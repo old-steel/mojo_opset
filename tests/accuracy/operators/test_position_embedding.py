@@ -105,7 +105,7 @@ def test_rotary_embedding(bs, seqlen, rope_dim, mode):
         (128, 0.375),
     ],
 )
-@pytest.mark.parametrize("mode", ["padding_prefill_pos3d", "padding_prefill_pos4d", "varlen_prefill", "decode"])
+@pytest.mark.parametrize("mode", ["padding_prefill_pos2d", "padding_prefill_pos3d", "varlen_prefill", "decode"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @bypass_not_implemented
 def test_apply_rope(bs, seqlen, q_heads, k_heads, head_first, head_dim, rope_percentage, mode, dtype):
@@ -131,7 +131,7 @@ def test_apply_rope(bs, seqlen, q_heads, k_heads, head_first, head_dim, rope_per
             q = q.transpose(1, 2)
             k = k.transpose(1, 2)
 
-    elif mode == "padding_prefill_pos4d":
+    elif mode == "padding_prefill_pos2d":
         position_ids = torch.arange(seqlen, dtype=torch.int32, device=device)
         x = torch.randn(seqlen, hidden_size, device=device, dtype=dtype)
         cos, sin = rot_pos_emb(x, position_ids=position_ids)
@@ -168,13 +168,6 @@ def test_apply_rope(bs, seqlen, q_heads, k_heads, head_first, head_dim, rope_per
 
     rope = MojoApplyRoPE()
     rope_ref = MojoApplyRoPE._registry.get("torch")()
-
-    if (
-        platform == "npu"
-        and mode == "padding_prefill"
-        and rope_percentage == 0.375
-    ):
-        pytest.skip("Skipped on NPU due to RotaryPositionEmbedding fusion operator limitation: D is not aligned")
 
     rope.forward_diff_with(
         rope_ref,
