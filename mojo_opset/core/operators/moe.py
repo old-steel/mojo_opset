@@ -51,9 +51,9 @@ class MojoMoE(MojoOperator):
             setattr(self.gating.gate_weight, "force_dtype", torch.float32)
 
     def forward(self, hidden_states):
-        # hidden_states: [seqlens, H]
+        # hidden_states: [num_tokens, H]
         top_k_indices, top_k_gates = self.gating(hidden_states)
-        # top_k_indices, top_k_gates: [seqlens, top_k]
+        # top_k_indices, top_k_gates: [num_tokens, top_k]
         sorted_hidden_states, tokens_per_expert, sorted_gates, token_indices = self.dispatch(hidden_states, top_k_gates, top_k_indices)
         # sorted_hidden_states: [local_tokens, H]
         # tokens_per_expert: [num_experts]
@@ -63,7 +63,7 @@ class MojoMoE(MojoOperator):
         # expert_outputs: [local_tokens, H]
         output_buffer = torch.zeros_like(hidden_states, memory_format=torch.contiguous_format)
         combined = self.combine(output_buffer, expert_outputs, sorted_gates, token_indices)
-        # combined: [seqlens, H]
+        # combined: [num_tokens, H]
         return combined
 
 
@@ -96,11 +96,11 @@ class MojoMoEGating(MojoOperator):
         Forward pass for MoE Gating operator.
 
         Input:
-        - hidden_states (torch.Tensor): Input tensor of shape [seq_len, hidden_size].
+        - hidden_states (torch.Tensor): Input tensor of shape [num_tokens, hidden_size].
 
         Output:
-        - top_k_indices (torch.Tensor): Output tensor of shape [seq_len, top_k].
-        - top_k_gates (torch.Tensor): Output tensor of shape [seq_len, top_k].
+        - top_k_indices (torch.Tensor): Output tensor of shape [num_tokens, top_k].
+        - top_k_gates (torch.Tensor): Output tensor of shape [num_tokens, top_k].
         """
         assert self.gate_weight.dtype == torch.float32
         gate_logits = torch.matmul(hidden_states.float(), self.gate_weight)
