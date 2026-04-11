@@ -6,6 +6,7 @@ from tests.utils import bypass_not_implemented
 from mojo_opset import MojoRotaryEmbedding
 from mojo_opset import MojoApplyRoPE
 from mojo_opset import MojoGridRoPE
+from mojo_opset import MojoMRoPE
 from mojo_opset.utils.platform import get_platform, get_torch_device
 
 torch.random.manual_seed(42)
@@ -205,3 +206,54 @@ def test_grid_pos_emb(bs, grid, heads, head_dim, pad, dtype):
     rope_ref = MojoGridRoPE._registry.get("torch")()
 
     rope.forward_diff_with(rope_ref, x, grid_sizes, freqs_list, atol=1e-3, rtol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "bs, grid, heads, head_dim, pad",
+    [
+        (1, (2, 4, 4), 8, 64, 0),
+        (2, (1, 8, 8), 16, 128, 3),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_mrope_reference(bs, grid, heads, head_dim, pad, dtype):
+    device = get_torch_device()
+    f, h, w = grid
+    seq_len = f * h * w
+    total_len = seq_len + pad
+
+    x = torch.randn(bs, total_len, heads, head_dim, device=device, dtype=dtype)
+    grid_sizes = torch.tensor([grid] * bs, device=device, dtype=torch.int64)
+
+    inv_freq = 1.0 / (10000.0 ** (torch.arange(0, head_dim, 2, device=device, dtype=torch.float32) / head_dim))
+    t = torch.arange(seq_len, device=device, dtype=inv_freq.dtype)
+    freqs_scalar = torch.einsum("i,j->ij", t, inv_freq)
+    freqs = torch.polar(torch.ones_like(freqs_scalar), freqs_scalar).to(torch.complex64)[:, None, :]
+    freqs_list = [freqs for _ in range(bs)]
+
+    grid_rope = MojoGridRoPE._registry.get("torch")()
+    mrope = MojoMRoPE._registry.get("torch")(head_dim=head_dim)
+
+    actual_with_freqs = mrope(x, grid_sizes, freqs_list)
+    expected_with_freqs = grid_rope(x, grid_sizes, freqs_list)
+    torch.testing.assert_close(actual_with_freqs, expected_with_freqs, atol=1e-3, rtol=1e-3)
+
+    c = head_dim // 2
+    base_freqs = torch.polar(torch.ones_like(freqs_scalar), freqs_scalar).to(torch.complex64)
+    split_sizes = [c - 2 * (c // 3), c // 3, c // 3]
+    freqs_sections = base_freqs.split(split_sizes, dim=1)
+    generated_freqs_list = []
+    for _ in range(bs):
+        freqs_i = torch.cat(
+            [
+                freqs_sections[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+                freqs_sections[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
+                freqs_sections[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
+            ],
+            dim=-1,
+        ).reshape(seq_len, 1, c)
+        generated_freqs_list.append(freqs_i)
+
+    actual_generated = mrope(x, grid_sizes)
+    expected_generated = grid_rope(x, grid_sizes, generated_freqs_list)
+    torch.testing.assert_close(actual_generated, expected_generated, atol=1e-3, rtol=1e-3)

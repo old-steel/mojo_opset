@@ -9,6 +9,8 @@ from mojo_opset import MojoFusedSwiGLUMoEScaleDynamicQuantize
 from mojo_opset import MojoGroupQuantGemmCombineMoE
 from mojo_opset import MojoGroupQuantGemmMoE
 from mojo_opset import MojoMoEInitRoutingDynamicQuant
+from mojo_opset import MojoMoETopKGatingDispatchDynamicQuant
+from mojo_opset import MojoMoEGating
 
 
 
@@ -68,6 +70,43 @@ def test_moe_init_routing_dynamic_quant_reference():
     torch.testing.assert_close(token_count, torch.tensor([2, 2], dtype=torch.int32))
     assert scale.shape == (2, 2, 1)
     assert scale.dtype == torch.float32
+
+
+def test_moe_topk_gating_dispatch_dynamic_quant_reference():
+    hidden_states = torch.arange(1, 17, dtype=torch.float32).reshape(2, 8)
+    smooth_scale = torch.ones(2, 8, dtype=torch.float32)
+    gate_weight = torch.tensor(
+        [
+            [0.1, 0.7],
+            [0.2, 0.6],
+            [0.3, 0.5],
+            [0.4, 0.4],
+            [0.5, 0.3],
+            [0.6, 0.2],
+            [0.7, 0.1],
+            [0.8, 0.0],
+        ],
+        dtype=torch.float32,
+    )
+
+    op = MojoMoETopKGatingDispatchDynamicQuant._registry.get("torch")(
+        hidden_size=8,
+        num_experts=2,
+        top_k=2,
+        quant_block_size=8,
+    )
+    op.gate_weight.data.copy_(gate_weight)
+    out = op(hidden_states, smooth_scale)
+
+    gating = MojoMoEGating._registry.get("torch")(hidden_size=8, num_experts=2, top_k=2)
+    gating.gate_weight.data.copy_(gate_weight)
+    top_k_indices, top_k_gates = gating(hidden_states)
+
+    routing = MojoMoEInitRoutingDynamicQuant._registry.get("torch")(num_experts=2, top_k=2, quant_block_size=8)
+    ref = routing(hidden_states, top_k_gates, top_k_indices, smooth_scale)
+
+    for actual, expected in zip(out, ref):
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
 
 def test_fused_swiglu_moe_scale_dynamic_quant_reference():
@@ -228,5 +267,3 @@ def test_group_quant_gemm_combine_moe_backend():
         atol=32,
         rtol=5e-3,
     )
-
-

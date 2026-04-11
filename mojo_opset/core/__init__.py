@@ -74,6 +74,7 @@ from .operators.moe import MojoMoE
 from .operators.moe import MojoMoECombine
 from .operators.moe import MojoMoEDispatch
 from .operators.moe import MojoMoEInitRoutingDynamicQuant
+from .operators.moe import MojoMoETopKGatingDispatchDynamicQuant
 from .operators.moe import MojoMoEGating
 from .operators.moe import MojoFusedSwiGLUMoEScaleDynamicQuantize
 from .operators.moe import MojoGroupQuantGemmA8W4MSD
@@ -103,6 +104,7 @@ from .operators.position_embedding import MojoNormRoPEStoreKV
 from .operators.position_embedding import MojoApplyRoPE
 from .operators.position_embedding import MojoRoPEStoreKV
 from .operators.position_embedding import MojoGridRoPE
+from .operators.position_embedding import MojoMRoPE
 
 """ sampling """
 from .operators.sampling import MojoApplyPenaltiesTempurate
@@ -186,6 +188,7 @@ __all__ = [
     "MojoMoEGating",
     "MojoMoEDispatch",
     "MojoMoECombine",
+    "MojoMoETopKGatingDispatchDynamicQuant",
     "MojoMoEInitRoutingDynamicQuant",
     "MojoFusedSwiGLUMoEScaleDynamicQuantize",
     "MojoGroupQuantGemmMoE",
@@ -213,6 +216,7 @@ __all__ = [
     "MojoNormRoPE",
     "MojoNormRoPEStoreKV",
     "MojoGridRoPE",
+    "MojoMRoPE",
 
     "MojoTopPSampling",
     "MojoTopKSampling",

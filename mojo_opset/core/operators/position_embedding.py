@@ -1,4 +1,5 @@
 from typing import Optional
+from typing import Sequence
 from typing import Tuple, List
 
 import torch
@@ -204,18 +205,154 @@ class MojoGridRoPE(MojoOperator):
             torch.Tensor: Same shape as `x`. Per sample, the first F*H*W tokens are rotated;
                 remaining padding tokens are preserved. Output dtype matches input.
         """
-        assert x.dim() == 4, "x must be 4D: [B, L, N, D]"
-        assert x.size(-1) % 2 == 0, "D must be even for complex pairing"
-        assert grid_sizes.dim() == 2 and grid_sizes.size(1) == 3, "grid_sizes must be [B, 3]"
+        return _apply_grid_rope_impl(x, grid_sizes, freqs_list)
 
-        n = x.size(2)
-        output = []
-        for i, (f, h, w) in enumerate(grid_sizes.tolist()):
-            seq_len = f * h * w
-            x_i = torch.view_as_complex(x[i, :seq_len].to(torch.float32).reshape(seq_len, n, -1, 2))
-            freqs_i = freqs_list[i]
-            x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
-            x_i = torch.cat([x_i, x[i, seq_len:]])
-            output.append(x_i)
-        y = torch.stack(output)
-        return y.type_as(x)
+
+def _apply_grid_rope_impl(
+    x: torch.Tensor,
+    grid_sizes: torch.Tensor,
+    freqs_list: List[torch.Tensor],
+) -> torch.Tensor:
+    assert x.dim() == 4, "x must be 4D: [B, L, N, D]"
+    assert x.size(-1) % 2 == 0, "D must be even for complex pairing"
+    assert grid_sizes.dim() == 2 and grid_sizes.size(1) == 3, "grid_sizes must be [B, 3]"
+    if len(freqs_list) != x.size(0):
+        raise ValueError(f"freqs_list length must equal batch size {x.size(0)}, but got {len(freqs_list)}.")
+
+    n = x.size(2)
+    output = []
+    for i, (f, h, w) in enumerate(grid_sizes.tolist()):
+        seq_len = f * h * w
+        if seq_len > x.size(1):
+            raise ValueError(f"Valid sequence length {seq_len} exceeds input length {x.size(1)} for sample {i}.")
+        x_i = torch.view_as_complex(x[i, :seq_len].to(torch.float32).reshape(seq_len, n, -1, 2))
+        freqs_i = freqs_list[i]
+        if freqs_i.shape != (seq_len, 1, x.size(-1) // 2):
+            raise ValueError(
+                f"freqs_list[{i}] must have shape {(seq_len, 1, x.size(-1) // 2)}, but got {tuple(freqs_i.shape)}."
+            )
+        x_i = torch.view_as_real(x_i * freqs_i.to(device=x.device)).flatten(2)
+        x_i = torch.cat([x_i, x[i, seq_len:]])
+        output.append(x_i)
+    y = torch.stack(output)
+    return y.type_as(x)
+
+
+class MojoMRoPE(MojoOperator):
+    """Multimodal rotary position embedding with built-in frequency generation.
+
+    This operator supports two modes:
+    1. Provide `freqs_list` directly, matching `MojoGridRoPE`.
+    2. Omit `freqs_list` and let the operator build per-sample 3D rotary
+       frequencies from `grid_sizes`.
+    """
+
+    def __init__(
+        self,
+        head_dim: Optional[int] = None,
+        theta: float = 10000.0,
+        section_sizes: Optional[Sequence[int]] = None,
+        max_seq_len: Optional[int] = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        if head_dim is not None and head_dim % 2 != 0:
+            raise ValueError(f"head_dim must be even, but got {head_dim}.")
+        self.head_dim = head_dim
+        self.theta = theta
+        self.section_sizes = None if section_sizes is None else tuple(int(v) for v in section_sizes)
+        self.max_seq_len = max_seq_len
+        if max_seq_len is not None:
+            if head_dim is None:
+                raise ValueError("head_dim must be provided when max_seq_len is set.")
+            self._build_base_freqs(max_seq_len, head_dim)
+
+    def _resolve_head_dim(self, x: torch.Tensor) -> int:
+        head_dim = x.size(-1) if self.head_dim is None else self.head_dim
+        if head_dim != x.size(-1):
+            raise ValueError(f"Configured head_dim {head_dim} does not match input head_dim {x.size(-1)}.")
+        if head_dim % 2 != 0:
+            raise ValueError(f"head_dim must be even, but got {head_dim}.")
+        return head_dim
+
+    def _resolve_section_sizes(self, pair_dim: int) -> Tuple[int, int, int]:
+        if self.section_sizes is None:
+            section_sizes = (pair_dim - 2 * (pair_dim // 3), pair_dim // 3, pair_dim // 3)
+        else:
+            if len(self.section_sizes) != 3:
+                raise ValueError(f"section_sizes must contain 3 values, but got {self.section_sizes}.")
+            section_sizes = tuple(self.section_sizes)
+        if sum(section_sizes) != pair_dim:
+            raise ValueError(f"section_sizes sum must equal head_dim // 2 ({pair_dim}), but got {section_sizes}.")
+        return section_sizes
+
+    def _build_base_freqs(self, max_seq_len: int, head_dim: int) -> torch.Tensor:
+        pair_dim = head_dim // 2
+        inv_freq = 1.0 / (
+            self.theta
+            ** (
+                torch.arange(
+                    0,
+                    head_dim,
+                    2,
+                    dtype=torch.float32,
+                    device=self.tensor_factory_kwargs.get("device"),
+                )
+                / head_dim
+            )
+        )
+        positions = torch.arange(max_seq_len, device=inv_freq.device, dtype=inv_freq.dtype)
+        freqs = torch.einsum("i,j->ij", positions, inv_freq)
+        base_freqs = torch.polar(torch.ones_like(freqs), freqs).to(torch.complex64)
+        if base_freqs.shape[-1] != pair_dim:
+            raise RuntimeError(f"Expected base freqs last dim {pair_dim}, but got {base_freqs.shape[-1]}.")
+        self.register_buffer("base_freqs", base_freqs, persistent=False)
+        return self.base_freqs
+
+    def _get_base_freqs(self, grid_sizes: torch.Tensor, head_dim: int, device: torch.device) -> torch.Tensor:
+        needed_seq_len = int(grid_sizes.max().item())
+        if not hasattr(self, "base_freqs") or self.base_freqs.size(0) < needed_seq_len:
+            return self._build_base_freqs(needed_seq_len, head_dim).to(device=device)
+        return self.base_freqs.to(device=device)
+
+    def build_freqs_list(
+        self,
+        grid_sizes: torch.Tensor,
+        head_dim: int,
+        device: torch.device,
+    ) -> List[torch.Tensor]:
+        if grid_sizes.dim() != 2 or grid_sizes.size(1) != 3:
+            raise ValueError(f"grid_sizes must be [B, 3], but got {tuple(grid_sizes.shape)}.")
+        pair_dim = head_dim // 2
+        section_sizes = self._resolve_section_sizes(pair_dim)
+        base_freqs = self._get_base_freqs(grid_sizes, head_dim, device)
+        freqs_sections = base_freqs.split(section_sizes, dim=1)
+
+        freqs_list = []
+        for f, h, w in grid_sizes.tolist():
+            freqs_i = torch.cat(
+                [
+                    freqs_sections[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+                    freqs_sections[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
+                    freqs_sections[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
+                ],
+                dim=-1,
+            ).reshape(f * h * w, 1, pair_dim)
+            freqs_list.append(freqs_i)
+        return freqs_list
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        grid_sizes: torch.Tensor,
+        freqs_list: Optional[List[torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        head_dim = self._resolve_head_dim(x)
+        if freqs_list is None:
+            freqs_list = self.build_freqs_list(grid_sizes, head_dim, x.device)
+        return _apply_grid_rope_impl(x, grid_sizes, freqs_list)
+
+    def extra_repr(self) -> str:
+        return (
+            f"{self.head_dim=}, {self.theta=}, {self.section_sizes=}, {self.max_seq_len=}"
+        ).replace("self.", "")
