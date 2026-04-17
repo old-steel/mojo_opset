@@ -6,8 +6,6 @@ import triton
 import triton.language as tl
 from mojo_opset.backends.ttx.kernels.mlu.utils import get_mlu_total_cores
 
-import pdb
-
 @triton.jit
 def paged_attention_decode_kernel(
     q_ptr,
