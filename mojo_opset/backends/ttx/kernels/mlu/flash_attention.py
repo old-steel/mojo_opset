@@ -132,7 +132,7 @@ def paged_attention_decode_impl(
 
     stride_q_batch, stride_q_head, _ = q.stride()
     stride_k_nblk, stride_k_head, stride_k_blksz, stride_k_hsz = key_cache.stride()
-    stride_v_nblk, stride_v_head, stride_v_blksz, stride_v_hsz = key_cache.stride()
+    stride_v_nblk, stride_v_head, stride_v_blksz, stride_v_hsz = value_cache.stride()
     stride_o_batch, stride_o_head, _ = o.stride()
     stride_bt_batch, stride_bt_nblk = block_tables.stride()
 
