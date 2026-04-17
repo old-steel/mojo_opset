@@ -6,6 +6,12 @@ import triton
 import triton.language as tl
 from mojo_opset.backends.ttx.kernels.mlu.utils import get_mlu_total_cores
 
+@triton.autotune(
+    configs = [
+        triton.Config({}, num_stages=1)
+    ],
+    key=[]
+)
 @triton.jit
 def paged_attention_decode_kernel(
     q_ptr,
@@ -16,7 +22,7 @@ def paged_attention_decode_kernel(
     context_lens_ptr,
     softmax_scale,
     block_size: tl.constexpr,
-    blocks_per_seq,
+    blocks_per_seq: tl.constexpr,
     bs,
     q_heads: tl.constexpr,
     kv_heads: tl.constexpr,
@@ -38,8 +44,12 @@ def paged_attention_decode_kernel(
 ):
     q_div_k : tl.constexpr = q_heads // kv_heads
     tile_q  : tl.constexpr = q_div_k
-    tile_k  : tl.constexpr = block_size  # tile_k >= block_size
-
+    tile_k  : tl.constexpr = 512
+    seg_size: tl.constexpr = tile_k if tile_k < block_size else block_size  # block_size is too large ???
+    blocks_on_core: tl.constexpr = (tile_k + block_size - 1) // block_size
+    blocks_pad_up : tl.constexpr = (blocks_per_seq + blocks_on_core - 1 ) // blocks_on_core * blocks_on_core + \
+                                   (1 if blocks_per_seq == 0 else 0)  # blocks_pad_up == 0 ???
+    
     total_tasks = bs * kv_heads
     core_nums = tl.num_programs(0)
 
@@ -58,21 +68,28 @@ def paged_attention_decode_kernel(
         # seq_len
         context_len = tl.load(context_lens_ptr + batch_id)
 
+        # load block_table
+        block_table_offset = stride_bt_batch * batch_id
+        block_table_seg = tl.arange(0, blocks_pad_up)
+        block_table_ptrs = block_table_ptr + block_table_offset + block_table_seg
+        block_ids = tl.load(block_table_ptrs, mask=block_table_seg < blocks_per_seq, other=0)
+
         # output
         o = tl.zeros((tile_q, head_size_vo), dtype=tl.float32)
         rmax, cmax = tl.full((tile_q,), -float('inf'), dtype=tl.float32), tl.zeros((tile_q,), dtype=tl.float32)
         rsum, csum = tl.zeros((tile_q,), dtype=tl.float32), tl.zeros((tile_q,), dtype=tl.float32)
 
-        for k_begin in range(0, context_len, tile_k): # tile_k = block_size
-            # load block_table
-            block_begin = k_begin // block_size
-            block_id = tl.load(block_table_ptr + stride_bt_batch * batch_id + block_begin * stride_bt_nblk)
+        for k_begin in range(0, context_len, tile_k):
             seq_k = tile_k if context_len > k_begin + tile_k else context_len - k_begin
 
-            # load kcache
-            kcache_offset = block_id * stride_k_nblk + kv_head_id * stride_k_head
-            kcache_seg = tl.arange(0, tile_k * head_size_qk)
-            kcache_ptrs = kcache_ptr + kcache_offset + kcache_seg
+            block_begin = k_begin // block_size
+            block_id = block_ids[block_begin: block_begin + blocks_on_core]
+            block_k_begin = k_begin % block_size
+
+            # load kcache, tile_k = seg_size * blocks_on_core
+            kcache_offset = block_id * stride_k_nblk + kv_head_id * stride_k_head + block_k_begin * stride_k_blksz
+            kcache_seg = tl.arange(0, seg_size * head_size_qk)
+            kcache_ptrs = kcache_ptr + kcache_offset[:, None] + kcache_seg[None, :]
             kcache_data = tl.load(kcache_ptrs).reshape(tile_k, head_size_qk)
 
             qk = tl.dot(q_data, tl.trans(kcache_data), out_dtype=tl.float32) * softmax_scale
@@ -91,9 +108,9 @@ def paged_attention_decode_kernel(
             rmax = cmax
 
             # load vcache
-            vcache_offset = block_id * stride_v_nblk + kv_head_id * stride_v_head
-            vcache_seg = tl.arange(0, tile_k * head_size_vo)
-            vcache_ptrs = vcache_ptr + vcache_offset + vcache_seg
+            vcache_offset = block_id * stride_v_nblk + kv_head_id * stride_v_head + block_k_begin * stride_v_blksz
+            vcache_seg = tl.arange(0, seg_size * head_size_vo)
+            vcache_ptrs = vcache_ptr + vcache_offset[:, None] + vcache_seg[None, :]
             vcache_data = tl.load(vcache_ptrs).reshape(tile_k, head_size_vo)
 
             qkv = tl.dot(p_cast, vcache_data, out_dtype=tl.float32)
