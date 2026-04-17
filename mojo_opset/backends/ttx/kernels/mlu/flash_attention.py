@@ -128,9 +128,6 @@ def paged_attention_decode_impl(
     _, kv_heads, block_size, head_size_vo = key_cache.shape
     _, blocks_per_seq = block_tables.shape
 
-    print("\ncontext_len=", seqlens)
-    print("blocks_per_seq=", blocks_per_seq)
-
     o = torch.empty((bs, q_heads, head_size_vo), dtype=q.dtype)
 
     stride_q_batch, stride_q_head, _ = q.stride()
