@@ -58,7 +58,7 @@ def paged_attention_decode_kernel(
         context_len = tl.load(context_lens_ptr + batch_id)
 
         # output
-        o = tl.zeros((TILE_Q, HEAD_SIZE_VO), dtype=tl.float32)
+        output = tl.zeros((TILE_Q, HEAD_SIZE_VO), dtype=tl.float32)
         rmax, cmax = tl.full((TILE_Q,), -float('inf'), dtype=tl.float32), tl.zeros((TILE_Q,), dtype=tl.float32)
         rsum, csum = tl.zeros((TILE_Q,), dtype=tl.float32), tl.zeros((TILE_Q,), dtype=tl.float32)
 
@@ -66,7 +66,6 @@ def paged_attention_decode_kernel(
         block_table_offset = stride_bt_batch * batch_id
         block_table_seg = tl.arange(0, BLOCKS_ON_CORE)
         block_table_ptrs = block_table_ptr + block_table_offset + block_table_seg
-
         for k_begin in range(0, context_len, TILE_K):
             seq_k = min(TILE_K, context_len - k_begin)
             block_begin: tl.constexpr = k_begin // BLOCK_SIZE
@@ -100,17 +99,17 @@ def paged_attention_decode_kernel(
             vcache_ptrs = vcache_ptr + vcache_offset[:, None] + vcache_seg[None, :]
             vcache_data = tl.load(vcache_ptrs).reshape(TILE_K, HEAD_SIZE_VO)
 
-            o = o * alpha[:, None]
-            o = tl.dot(p_cast, vcache_data, out_dtype=tl.float32) + o
+            output = output * alpha[:, None]
+            output = tl.dot(p_cast, vcache_data, out_dtype=tl.float32) + output
         # end for
         if context_len > 0:
-            o = o / rsum[:, None]
+            output = output / rsum[:, None]
 
         # store output
         o_offset = batch_id * stride_o_batch + q_head_ids * stride_o_head
         o_seg = tl.arange(0, HEAD_SIZE_VO)
         o_ptrs = o_ptr + o_offset[:, None] + o_seg[None, :]
-        tl.store(o_ptrs, o.to(q_data.dtype))
+        tl.store(o_ptrs, output.to(q_data.dtype))
     # end for
 
 
@@ -128,12 +127,12 @@ def paged_attention_decode_impl(
     bs, q_heads, head_size_qk = q.shape
     _, kv_heads, block_size, head_size_vo = key_cache.shape
 
-    o = torch.empty((bs, q_heads, head_size_vo), dtype=q.dtype)
+    output = torch.empty((bs, q_heads, head_size_vo), dtype=q.dtype)
 
     stride_q_batch, stride_q_head, _ = q.stride()
     stride_k_nblk, stride_k_head, stride_k_blksz, _ = key_cache.stride()
     stride_v_nblk, stride_v_head, stride_v_blksz, _ = value_cache.stride()
-    stride_o_batch, stride_o_head, _ = o.stride()
+    stride_o_batch, stride_o_head, _ = output.stride()
     stride_bt_batch, _ = block_tables.stride()
 
     if softmax_scale is None:
@@ -145,7 +144,7 @@ def paged_attention_decode_impl(
         q,
         key_cache,
         value_cache,
-        o,
+        output,
         block_tables,
         seqlens,
         softmax_scale,
@@ -168,8 +167,6 @@ def paged_attention_decode_impl(
         head_size_vo,
         tile_k,
         gqa_interleave,
-        num_warps=1,
-        num_stages=3,
     )
 
-    return o
+    return output
