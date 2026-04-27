@@ -4,7 +4,7 @@ from .layernorm import layernorm_fwd_impl
 from .swa import swa_paged_decode_impl
 from .swa import swa_paged_prefill_impl
 from .group_rmsnorm import group_rmsnorm_impl
-from .flash_attention import paged_attention_decode_impl
+from .fa_paged_decode import paged_attention_decode_impl
 from .fa_paged_prefill import paged_attention_prefill_impl
 
 __all__ = [
